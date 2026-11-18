@@ -253,7 +253,9 @@ function makeWater(){const t=new THREE.TextureLoader().load('./lib/textures/wate
 const MAT={paint:HQ?new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.38,metalness:.12,clearcoat:1,clearcoatRoughness:.06}):new THREE.MeshStandardMaterial({vertexColors:true,roughness:.3,metalness:.1}),
   matte:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85}),
   metal:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.3,metalness:.85}),
-  glow:new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false})};
+  glow:new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false}),
+  fur:HQ?new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.72,sheen:1,sheenRoughness:.45,sheenColor:new THREE.Color('#ffffff')}):new THREE.MeshStandardMaterial({vertexColors:true,roughness:.75}),
+  cloth:HQ?new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.55,sheen:.6,sheenRoughness:.5,sheenColor:new THREE.Color('#ffffff')}):new THREE.MeshStandardMaterial({vertexColors:true,roughness:.6})};
 const GC={};const gget=(k,f)=>GC[k]||(GC[k]=f());
 // カートのスキン（ファイア・迷彩・レーシング・ギャラクシーは Higgsfield で生成）
 const KSKINS=[{n:'キャラ色'},{n:'ファイア',img:'flames'},{n:'迷彩',img:'camo'},{n:'レーシング',img:'stripes'},{n:'ギャラクシー',img:'galaxy'},{n:'カーボン',proc:'carbon'},{n:'チェッカー',proc:'check'},{n:'ドット',proc:'dots'}];
@@ -573,42 +575,101 @@ function buildCourse(id){
 
 /* ---------------- キャラクター・カート ---------------- */
 const CHARS=[
-  {name:'ミケ',sp:'cat',em:'🐱',cls:0,col:'#ff7a2f',suit:'#ffd23c',head:'#f3a24e'},
-  {name:'ピョン',sp:'rabbit',em:'🐰',cls:0,col:'#ff6fae',suit:'#ffffff',head:'#f7f2f2'},
-  {name:'ケロ',sp:'frog',em:'🐸',cls:0,col:'#33c25a',suit:'#ffe14d',head:'#72c94e'},
-  {name:'ポチ',sp:'dog',em:'🐶',cls:1,col:'#2f7bff',suit:'#ffffff',head:'#dca36a'},
-  {name:'ペンタ',sp:'penguin',em:'🐧',cls:1,col:'#19b9d8',suit:'#26324a',head:'#26324a'},
-  {name:'パン',sp:'panda',em:'🐼',cls:1,col:'#ffcf26',suit:'#2b2b2b',head:'#f6f6f6'},
-  {name:'ゴロー',sp:'bear',em:'🐻',cls:2,col:'#e53935',suit:'#2f6f3a',head:'#8d5a38'},
-  {name:'メカ',sp:'robot',em:'🤖',cls:2,col:'#8e5cff',suit:'#5b6270',head:'#c9ced8'},
+  {name:'ミケ',belly:'#ffffff',eye:'#2f9a46',sp:'cat',em:'🐱',cls:0,col:'#ff7a2f',suit:'#ffd23c',head:'#f3a24e'},
+  {name:'ピョン',eye:'#e0457a',glove:'#ffb6c8',sp:'rabbit',em:'🐰',cls:0,col:'#ff6fae',suit:'#ffffff',head:'#f7f2f2'},
+  {name:'ケロ',belly:'#ffe9a0',sp:'frog',em:'🐸',cls:0,col:'#33c25a',suit:'#ffe14d',head:'#72c94e'},
+  {name:'ポチ',belly:'#f3e2c8',eye:'#5a3a1a',glove:'#e2352b',sp:'dog',em:'🐶',cls:1,col:'#2f7bff',suit:'#ffffff',head:'#dca36a'},
+  {name:'ペンタ',belly:'#ffffff',eye:'#2a5aa0',shoe:'#ff9b1f',glove:'#26324a',sp:'penguin',em:'🐧',cls:1,col:'#19b9d8',suit:'#26324a',head:'#26324a'},
+  {name:'パン',belly:'#ffffff',glove:'#1d1d1d',sp:'panda',em:'🐼',cls:1,col:'#ffcf26',suit:'#2b2b2b',head:'#f6f6f6'},
+  {name:'ゴロー',belly:'#e8c7a2',eye:'#3a2410',glove:'#8d5a38',sp:'bear',em:'🐻',cls:2,col:'#e53935',suit:'#2f6f3a',head:'#8d5a38'},
+  {name:'メカ',glove:'#7d8592',shoe:'#5b6270',sp:'robot',em:'🤖',cls:2,col:'#8e5cff',suit:'#5b6270',head:'#c9ced8'},
 ];
 const CLS=[{n:'軽量級',spd:2,acc:4,hnd:4,wgt:1},{n:'中量級',spd:3,acc:3,hnd:3,wgt:3},{n:'重量級',spd:4,acc:2,hnd:2,wgt:5}];
 const KTYPES=[{name:'スタンダード',d:'バランス型',mod:{}},{name:'スピードスター',d:'最高速が高い・曲がりにくい',mod:{spd:1,hnd:-1}},{name:'バギー',d:'加速が良く、芝生でも減速しにくい',mod:{spd:-1,acc:1},off:true}];
 function stats(ci,kt){const b=CLS[CHARS[ci].cls],m=KTYPES[kt].mod,o={};for(const k of['spd','acc','hnd','wgt'])o[k]=clamp(b[k]+(m[k]||0),1,5);o.off=!!KTYPES[kt].off;return o;}
 
-function buildDriver(L,ch){const H0=[-1.9,10.7,0],h=(dx,dy,dz)=>[H0[0]+dx,H0[1]+dy,H0[2]+dz];
-  const P=(geo,col,cat,o,rx,ry,rz,sx,sy,sz)=>part(L,geo,col,cat,o[0],o[1],o[2],rx,ry,rz,sx,sy,sz);
-  P(cap(2.0,1.6),ch.suit,'paint',[-2.3,6.5,0],0,0,0,1,1,1.12);
-  for(const s of[-1,1]){P(cap(.62,2.6),ch.suit,'paint',[-.3,6.9,s*2.0],0,0,-1.15);P(sph(.75),'#ffffff','matte',[1.15,5.95,s*1.25]);}
-  const eyes=(dx=2.15,dy=.35,dz=.95,r=.62)=>{for(const s of[-1,1]){P(sph(r),'#ffffff','paint',h(dx,dy,s*dz),0,0,0,.6,1,1);P(sph(r*.6),'#111111','paint',h(dx+.32,dy,s*dz));P(sph(r*.2,12,8),'#ffffff','glow',h(dx+.56,dy+.22,s*(dz-.12)));}};
-  const head=(col,sx=1,sy=1,sz=1)=>P(sph(2.6,40,28),col,'paint',H0,0,0,0,sx,sy,sz);
-  const pink='#ff9fb4';
+// ドライバー（体・頭・しっぽを別パーツにして、ハンドル操作に合わせて動かす）
+const _yv=new THREE.Vector3(0,1,0),_dv=new THREE.Vector3(),_qq=new THREE.Quaternion(),_ee=new THREE.Euler();
+const SEG=HQ?1:.7,sg=n=>Math.max(8,Math.round(n*SEG));
+function seg(L,a,b,r,col,cat){_dv.set(b[0]-a[0],b[1]-a[1],b[2]-a[2]);const d=_dv.length();_dv.normalize();_qq.setFromUnitVectors(_yv,_dv);_ee.setFromQuaternion(_qq);
+  part(L,cap(+r.toFixed(2),+Math.max(.01,d).toFixed(2)),col,cat,(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2,_ee.x,_ee.y,_ee.z);}
+const S2=(r,w=40,h=28)=>sph(r,sg(w),sg(h));
+const hatGeo=()=>gget('hat'+SEG,()=>new THREE.SphereGeometry(2.74,sg(48),sg(20),0,TAU,0,Math.PI*.5));
+const torsoGeo=()=>gget('torso'+SEG,()=>{const pr=[[0,0],[1.7,.1],[2.15,.8],[2.28,1.8],[2.08,2.8],[1.62,3.5],[.95,3.9],[0,4.02]].map(p=>new THREE.Vector2(p[0],p[1]));return new THREE.LatheGeometry(pr,sg(44));});
+function arcT(L,R,r,arc,col,cat,x,y,z,center,ry=Math.PI/2){part(L,tor(R,r,arc),col,cat,x,y,z,0,ry,center-arc/2);}
+function buildDriver(L,HL,TL,ch){
+  const NECK=2.2,B=(geo,col,cat,o,rx,ry,rz,sx,sy,sz)=>part(L,geo,col,cat,o[0],o[1],o[2],rx,ry,rz,sx,sy,sz),
+    Hd=(geo,col,cat,o,rx,ry,rz,sx,sy,sz)=>part(HL,geo,col,cat,o[0],o[1]+NECK,o[2],rx,ry,rz,sx,sy,sz),
+    Tl=(geo,col,cat,o,rx,ry,rz,sx,sy,sz)=>part(TL,geo,col,cat,o[0],o[1],o[2],rx,ry,rz,sx,sy,sz);
+  const suit=ch.suit,kc=ch.col,fur='fur',pink='#ff9fb4',white='#ffffff',belly=ch.belly||null;
+  // 胴体（レーシングスーツ）
+  B(torsoGeo(),suit,'cloth',[-2.3,4.6,0],0,0,0,1,1,1.1);
+  if(belly)B(S2(1.75),belly,fur,[-.62,6.4,0],0,0,0,.42,1.05,1);
+  B(tor(1.35,.36),kc,'paint',[-2.3,8.45,0],Math.PI/2,0,0);                         // 襟
+  B(cyl(.55,.55,.14,sg(28)),kc,'paint',[-.25,7.5,.95],0,0,Math.PI/2);B(S2(.22,16,12),white,'glow',[-.16,7.5,.95]); // 胸のエンブレム
+  for(const s of[-1,1]){const sh=[-2.1,7.9,s*2.05],el=[-.5,6.75,s*2.35],wr=[.95,6.0,s*1.35];
+    B(S2(.82),suit,'cloth',sh);seg(L,sh,el,.62,suit,'cloth');seg(L,el,wr,.55,suit,'cloth');B(S2(.66),suit,'cloth',el);
+    B(S2(.78),ch.glove||white,'matte',[1.2,5.95,s*1.25],0,0,0,1,.9,1);B(S2(.32),ch.glove||white,'matte',[1.25,6.5,s*.95]);   // 手袋
+    const hp=[-1.7,4.9,s*1.05],kn=[.7,5.15,s*1.15],ft=[2.3,3.0,s*1.15];seg(L,hp,kn,.72,suit,'cloth');seg(L,kn,ft,.6,suit,'cloth');B(S2(.66),suit,'cloth',kn);
+    B(rbox(2,1.0,1.3,.45),ch.shoe||'#2b2e36','matte',[2.8,2.75,s*1.15]);}
+  // 目（アニメ調）
+  const eyes=(x=2.22,y=.35,z=.95,r=.72,iris=ch.eye||'#3a2a1a')=>{for(const s of[-1,1]){Hd(S2(r),white,'paint',[x,y,s*z],0,0,0,.45,1.18,.9);
+    Hd(S2(r*.68),iris,'paint',[x+.2,y-.05,s*z],0,0,0,.36,1.05,.9);Hd(S2(r*.38),'#0b0b10','paint',[x+.3,y-.08,s*z],0,0,0,.3,1,.9);
+    Hd(S2(r*.2,16,12),white,'glow',[x+.38,y+.28,s*(z-.18)]);Hd(S2(r*.1,12,8),white,'glow',[x+.36,y-.32,s*(z+.16)]);}};
+  const brows=(y=1.3,z=.95,col='#3a2a20')=>{for(const s of[-1,1])arcT(HL,.5,.09,Math.PI*.55,col,'matte',2.35,y+NECK,s*z,Math.PI/2+s*.12);};
+  const smile=(y=-.85,R=.45,col='#5a2a2a')=>arcT(HL,R,.09,Math.PI*.7,col,'matte',2.48,y+NECK,0,-Math.PI/2);
+  const cheeks=(col='#ff8fa8')=>{for(const s of[-1,1])Hd(S2(.5,24,16),col,'matte',[2.05,-.45,s*1.62],0,s*.55,0,.22,.6,1);};
+  const head=(col,sx=1,sy=1,sz=1)=>Hd(S2(2.6,56,40),col,fur,[0,0,0],0,0,0,sx,sy,sz);
+  const tailBalls=(cols,pts,r0,r1)=>pts.forEach((p,i)=>Tl(S2(lerp(r0,r1,i/(pts.length-1)),20,14),cols[i%cols.length],fur,p));
   switch(ch.sp){
-    case 'cat':head(ch.head);eyes();for(const s of[-1,1]){P(cone(.95,1.9),ch.head,'paint',h(-.2,2.35,s*1.5),s*.35);P(cone(.55,1.2),pink,'matte',h(.25,2.25,s*1.45),s*.35);}
-      P(sph(.9),'#ffffff','paint',h(2.1,-.8,0),0,0,0,.6,.6,1.3);P(sph(.32),pink,'paint',h(2.6,-.35,0));break;
-    case 'rabbit':head(ch.head);eyes();for(const s of[-1,1]){P(cap(.62,3),ch.head,'paint',h(-.5,3.7,s*.95),s*.16);P(cap(.34,2.4),pink,'matte',h(-.05,3.7,s*.98),s*.16,0,0,.5,1,1);}
-      P(sph(.32),pink,'paint',h(2.6,-.35,0));P(sph(.8),'#ffffff','paint',h(2.15,-.85,0),0,0,0,.6,.6,1.2);break;
-    case 'frog':head(ch.head,1.05,.8,1.15);for(const s of[-1,1]){P(sph(1.1),'#ffffff','paint',h(1.0,1.85,s*1.25));P(sph(.58),'#111111','paint',h(1.85,1.95,s*1.25));P(sph(.2,12,8),'#ffffff','glow',h(2.35,2.2,s*1.15));P(sph(.55),pink,'matte',h(1.85,-.65,s*1.75),0,0,0,.4,.6,1);}
-      P(tor(1.2,.14,Math.PI),'#2a6b1e','matte',h(2.35,-.6,0),0,Math.PI/2,Math.PI);break;
-    case 'dog':head(ch.head);eyes();for(const s of[-1,1])P(sph(1.1),'#8a5a35','paint',h(-.2,.5,s*2.6),s*.25,0,0,.6,1.6,.42);
-      P(sph(1.1),'#f3e2c8','paint',h(2.0,-.75,0),0,0,0,.8,.7,1);P(sph(.45),'#111111','paint',h(2.85,-.35,0));break;
-    case 'penguin':head(ch.head);P(sph(2.2),'#ffffff','paint',h(1.3,-.1,0),0,0,0,.5,.85,.95);eyes(2.25,.45,.85,.55);P(cone(.55,1.4),'#ff9b1f','paint',h(2.9,-.55,0),0,0,-Math.PI/2);break;
-    case 'panda':head(ch.head);for(const s of[-1,1]){P(sph(.95),'#1d1d1d','paint',h(-.3,2.3,s*1.75));P(sph(.85),'#1d1d1d','paint',h(2.0,.3,s*1.0),s*.5,0,0,.45,1,.8);}eyes(2.3,.4,1.0,.5);
-      P(sph(.9),'#ffffff','paint',h(2.15,-.85,0),0,0,0,.6,.6,1.2);P(sph(.38),'#1d1d1d','paint',h(2.65,-.45,0));break;
-    case 'bear':head(ch.head);eyes();for(const s of[-1,1]){P(sph(.95),ch.head,'paint',h(-.3,2.3,s*1.75));P(sph(.5),'#e8c7a2','matte',h(.2,2.3,s*1.75),0,0,0,.6,1,1);}
-      P(sph(1.05),'#e8c7a2','paint',h(2.05,-.8,0),0,0,0,.75,.7,1);P(sph(.45),'#111111','paint',h(2.85,-.4,0));break;
-    case 'robot':P(rbox(4.6,4.2,4.8,.9),ch.head,'metal',H0);P(rbox(.6,1.3,3.9,.3),'#3ff2ff','glow',h(2.25,.35,0));P(cyl(.18,.18,2),'#9aa0aa','metal',h(0,3,0));P(sph(.45),'#ff3b3b','glow',h(0,4.1,0));
-      for(const s of[-1,1])P(cyl(.7,.7,.6),'#7d8592','metal',h(0,0,s*2.55),Math.PI/2);break;
+    case 'cat':head(ch.head);eyes();brows(1.35);smile(-1.05,.35);cheeks();
+      for(const[x,y,z,r]of[[-.4,2.0,1.1,1.05],[-1.6,1.2,-.9,1.2],[.6,2.1,-.7,.8]])Hd(S2(r),'#7a4a2a',fur,[x,y,z],0,0,0,.55,.55,1);
+      for(const s of[-1,1]){Hd(cone(1.0,2.0,sg(32)),ch.head,fur,[-.2,2.35,s*1.5],s*.35);Hd(cone(.58,1.25,sg(32)),pink,'matte',[.22,2.22,s*1.45],s*.35);
+        Hd(S2(.72),white,fur,[2.12,-.72,s*.42]);for(let w=0;w<3;w++)seg(HL,[2.5,-.55+NECK-.15*w,s*.85],[2.75,-.35+NECK-.35*w,s*2.3],.035,'#f2f2f2','matte');}
+      Hd(S2(.3),pink,'paint',[2.72,-.38,0],0,0,0,.8,.7,1);
+      B(tor(1.45,.22),'#e2352b','paint',[-2.3,8.15,0],Math.PI/2,0,0);B(S2(.42),'#ffd23c','metal',[-.85,7.85,0]);
+      tailBalls(['#f3a24e','#7a4a2a'],[[0,0,0],[-.9,.5,0],[-1.6,1.4,0],[-2,2.5,0],[-2,3.6,0],[-1.6,4.5,0],[-.9,5,0]],.55,.42);break;
+    case 'rabbit':head(ch.head,1,1.02,1);eyes(2.22,.4,.95,.74);brows(1.38,.95,'#c9a0a8');cheeks();smile(-1.0,.32);
+      for(const s of[-1,1]){Hd(cap(.66,3.4),ch.head,fur,[-.5,4.0,s*.98],s*.16,0,-.08);Hd(cap(.36,2.7),pink,'matte',[-.04,4.0,s*1.0],s*.16,0,-.08,.5,1,1);}
+      Hd(S2(.62),'#ff4f8a','paint',[-.45,5.6,1.45],0,0,.5,.6,1,.45);Hd(S2(.62),'#ff4f8a','paint',[-.45,5.6,.55],0,0,-.5,.6,1,.45);Hd(S2(.3),'#ff4f8a','paint',[-.4,5.6,1.0]);
+      Hd(S2(.32),pink,'paint',[2.66,-.35,0]);for(const s of[-1,1]){Hd(S2(.62),white,fur,[2.18,-.75,s*.38]);Hd(rbox(.18,.5,.3,.06),white,'paint',[2.45,-1.22,s*.17]);}
+      Tl(S2(1.05),white,fur,[0,.6,0]);break;
+    case 'frog':head(ch.head,1.08,.82,1.18);
+      for(const s of[-1,1]){Hd(S2(1.15),ch.head,fur,[.95,1.75,s*1.25]);Hd(S2(.98),white,'paint',[1.25,1.95,s*1.25]);Hd(S2(.55),'#e8b020','paint',[1.95,2.0,s*1.25],0,0,0,.5,1,1);
+        Hd(S2(.3),'#0b0b10','paint',[2.1,2.0,s*1.25],0,0,0,.4,1.1,1);Hd(S2(.16,16,12),white,'glow',[2.18,2.25,s*1.12]);Hd(S2(.55),pink,'matte',[1.9,-.55,s*1.85],0,s*.6,0,.25,.6,1);}
+      arcT(HL,1.35,.12,Math.PI*.75,'#1f5a18','matte',2.5,-.45+NECK,0,-Math.PI/2);
+      for(const[x,y,z,r]of[[-1,1.6,.6,.5],[-1.8,.6,-1,.6],[-.2,1.8,-.9,.4],[-1.4,1.4,-.2,.45]])Hd(S2(r),'#3f8f2e',fur,[x,y,z],0,0,0,.4,.4,1);
+      Hd(S2(1.2),'#8fe060','matte',[-.2,2.25,0],0,0,.2,1.1,.18,.8);Hd(cyl(.1,.12,.8,12),'#5a8a30','matte',[-.25,2.6,0]);break;
+    case 'dog':head(ch.head);eyes(2.22,.35,.95,.7,'#5a3a1a');cheeks('#ffa8a0');
+      for(const s of[-1,1]){Hd(S2(1.15),'#8a5a35',fur,[-.25,.35,s*2.62],s*.25,0,0,.6,1.65,.42);Hd(S2(.28),'#8a5a35','matte',[2.25,1.35,s*.85]);}
+      Hd(S2(1.2),'#f3e2c8',fur,[1.95,-.78,0],0,0,0,.85,.72,1.05);Hd(S2(.5),'#141414','paint',[2.92,-.32,0],0,0,0,.9,.75,1.1);
+      arcT(HL,.38,.08,Math.PI*.8,'#4a2a20','matte',2.78,-1.15+NECK,0,-Math.PI/2);Hd(S2(.5),'#ff6f8a','matte',[2.6,-1.55,0],0,0,.4,.35,.75,.7);
+      B(cone(1.8,2.6,sg(32)),'#e2352b','cloth',[-1.05,7.2,0],0,0,Math.PI,.55,1,1);B(tor(1.45,.3),'#e2352b','cloth',[-2.3,8.2,0],Math.PI/2,0,0);B(S2(.42),'#e2352b','cloth',[-3.6,8.2,0]);
+      tailBalls(['#dca36a'],[[0,0,0],[-.6,.8,0],[-.9,1.7,0],[-.85,2.5,0]],.55,.45);break;
+    case 'penguin':head(ch.head);Hd(S2(2.25),white,fur,[1.3,-.15,.55],0,0,0,.5,.82,.6);Hd(S2(2.25),white,fur,[1.3,-.15,-.55],0,0,0,.5,.82,.6);
+      eyes(2.3,.42,.85,.6,'#2a5aa0');cheeks();
+      Hd(cone(.6,1.5,sg(28)),'#ff9b1f','paint',[2.95,-.5,0],0,0,-Math.PI/2,1,1,1.3);Hd(cone(.45,1.0,sg(28)),'#e07a10','paint',[2.75,-.82,0],0,0,-Math.PI/2-.25,1,1,1.2);
+      Hd(hatGeo(),'#e2352b','cloth',[0,.45,0],0,0,0,1,.9,1);for(let r=0;r<3;r++)Hd(tor(2.35-r*.32,.16),white,'cloth',[-.1,1.5+r*.55,0],Math.PI/2,0,0,1,1,1);
+      Hd(S2(.65),white,fur,[0,2.85,0]);
+      B(tor(1.5,.42),'#2f7bff','cloth',[-2.3,8.15,0],Math.PI/2,0,0);B(rbox(.7,2.4,.9,.3),'#2f7bff','cloth',[-1.05,6.9,.9],0,0,.15);B(rbox(.72,.4,.92,.1),white,'cloth',[-1.1,6.2,.9],0,0,.15);
+      Tl(S2(.7),ch.head,fur,[0,.2,0],0,0,0,1,.5,1.4);break;
+    case 'panda':head(ch.head);for(const s of[-1,1]){Hd(S2(1.0),'#1d1d1d',fur,[-.3,2.3,s*1.75]);Hd(S2(.95),'#1d1d1d',fur,[2.0,.25,s*1.0],s*.55,0,-.25,.42,1.1,.82);}
+      eyes(2.32,.38,1.0,.55,'#2a2a2a');cheeks();smile(-1.1,.3);
+      Hd(S2(.95),white,fur,[2.15,-.82,0],0,0,0,.62,.6,1.2);Hd(S2(.4),'#1d1d1d','paint',[2.7,-.45,0],0,0,0,.8,.7,1);
+      Hd(tor(2.62,.3),'#e2352b','cloth',[0,1.0,0],Math.PI/2,0,.12);for(const s of[-1,1])Hd(rbox(1.8,.5,.15,.07),'#e2352b','cloth',[-3.2,.9,s*.35],0,s*.35,-.5);
+      Tl(S2(.6),'#1d1d1d',fur,[0,.2,0]);break;
+    case 'bear':head(ch.head,1.04,1,1.04);eyes(2.25,.35,.95,.66,'#3a2410');brows(1.3,.95,'#4a2a18');cheeks('#e88a7a');
+      for(const s of[-1,1]){Hd(S2(1.0),ch.head,fur,[-.3,2.3,s*1.78]);Hd(S2(.55),'#e8c7a2','matte',[.2,2.3,s*1.78],0,0,0,.55,1,1);}
+      Hd(S2(1.1),'#e8c7a2',fur,[2.0,-.82,0],0,0,0,.78,.72,1.05);Hd(S2(.48),'#141414','paint',[2.85,-.4,0],0,0,0,.9,.75,1.1);smile(-1.3,.32,'#3a1a10');
+      Hd(hatGeo(),kc,'paint',[-.15,.55,0],0,0,.12,1,.7,1);Hd(cyl(1.6,1.6,.16,sg(36)),kc,'paint',[2.2,1.45,0],0,0,-.22,1,1,1.1);Hd(S2(.28),white,'paint',[-.1,2.45,0]);
+      Tl(S2(.7),ch.head,fur,[0,.2,0]);break;
+    case 'robot':Hd(rbox(4.8,4.4,5,1.1),ch.head,'metal',[0,0,0]);Hd(rbox(.5,2.6,4.1,.45),'#141824','paint',[2.3,.1,0]);
+      for(const s of[-1,1]){Hd(tor(.48,.14),'#3ff2ff','glow',[2.55,.55,s*1.0],0,Math.PI/2,0);Hd(S2(.22),'#3ff2ff','glow',[2.55,.55,s*1.0]);
+        Hd(cyl(.75,.75,.6,sg(28)),'#7d8592','metal',[0,0,s*2.6],Math.PI/2);Hd(cyl(.12,.12,2.2,12),'#9aa0aa','metal',[0,1.6,s*2.6]);Hd(S2(.38),'#ff3b3b','glow',[0,2.8,s*2.6]);}
+      for(let b=0;b<4;b++)Hd(rbox(.12,.12,.5,.05),'#3ff2ff','glow',[2.56,-.65,-.75+b*.5]);
+      for(const y of[1.9,-1.9])Hd(rbox(4.2,.08,4.4,.03),'#9aa0aa','metal',[-.2,y,0]);
+      B(rbox(.4,1.5,1.9,.2),'#141824','paint',[-.3,6.7,0]);for(let b=0;b<3;b++)B(rbox(.12,.25,1.3,.06),['#3ff2ff','#ffd23c','#ff3b3b'][b],'glow',[-.1,7.15-b*.42,0]);
+      Tl(cyl(.2,.2,1.2,12),'#9aa0aa','metal',[0,.6,0]);Tl(S2(.3),'#3ff2ff','glow',[0,1.3,0]);break;
   }}
 function buildKart(ci,kt,skin=0){
   const ch=CHARS[ci],root=new THREE.Group(),body=new THREE.Group();root.rotation.order='YZX';root.add(body);const L=[];
@@ -638,7 +699,11 @@ function buildKart(ci,kt,skin=0){
   }
   P(rbox(1.5,4.8,5,.7),'#1d1f25','matte',-3.6,5.0,0);P(rbox(3.4,1,5,.45),'#1d1f25','matte',-2.6,3.6,0);
   P(cyl(.22,.22,3.2,16),MT,'metal',2.2,4.6,0,0,0,-.9);P(tor(1.35,.28),DK,'matte',1.3,5.8,0,0,Math.PI/2,.5);
-  buildDriver(L,ch);merge(L,body,true,skin);
+  merge(L,body,true,skin);
+  const DL=[],HL=[],TLs=[];buildDriver(DL,HL,TLs,ch);
+  const drv=new THREE.Group(),cs=[.93,1,1.1][ch.cls];drv.scale.setScalar(cs);drv.position.set(-3*(1-cs),4.6*(1-cs),0);body.add(drv);merge(DL,drv);
+  const head=new THREE.Group();head.position.set(-1.9,8.5,0);drv.add(head);merge(HL,head);
+  const tail=new THREE.Group();tail.position.set(-4.5,5.6,0);drv.add(tail);if(TLs.length)merge(TLs,tail);
   const wheels=[];
   for(const f of[1,0])for(const s of[-1,1]){
     const r=f?wh.rf:wh.rr,w=f?wh.wf:wh.wr,WL=[];
@@ -651,7 +716,7 @@ function buildKart(ci,kt,skin=0){
     wheels.push({piv,spin,r,front:!!f,s});}
   const shield=new THREE.Mesh(gget('shield',()=>new THREE.SphereGeometry(11,40,28)),new THREE.MeshBasicMaterial({color:'#7fd8ff',transparent:true,opacity:.25,blending:THREE.AdditiveBlending,depthWrite:false}));
   shield.position.y=6;shield.visible=false;root.add(shield);
-  return {root,body,wheels,shield,wh};}
+  return {root,body,wheels,shield,wh,head,tail};}
 function disposeKart(v){v.root.traverse(o=>{if(o.isMesh&&o!==v.shield)o.geometry.dispose();});v.shield.material.dispose();v.root.removeFromParent();}
 
 /* ---------------- パーティクル ---------------- */
@@ -999,6 +1064,11 @@ function syncKart(k,dt,t){const v=k.v,hz=k.hop>0?Math.sin(k.hop/.3*Math.PI)*2.6:
   v.body.rotation.x=k.trick?Math.min(1,k.trickT/.45)*TAU:lerp(v.body.rotation.x%TAU,-(k.drift?k.drift*.09:k.steer*.06)*sf,Math.min(1,dt*8));
   v.body.rotation.z=lerp(v.body.rotation.z,(k.thr&&k.vel<MAXV*.6?.035:0)+(k.boost>0?.04:0),Math.min(1,dt*5));
   v.body.position.y=Math.sin(t*.025+k.ci)*.06*sf;
+  if(v.head){const look=-k.steer*.38-(k.drift?k.drift*.18:0),win=k.fin&&k.rank<=3;
+    v.head.rotation.y=lerp(v.head.rotation.y,k.spin>0?Math.sin(t*.02)*.6:look,Math.min(1,dt*7));
+    v.head.rotation.x=k.spin>0?Math.sin(t*.035)*.35:lerp(v.head.rotation.x,k.steer*.12,Math.min(1,dt*6));
+    v.head.rotation.z=(k.boost>0?.12:0)+(win?Math.abs(Math.sin(t*.008))*.25:Math.sin(t*.012+k.ci)*.03*sf);
+    v.tail.rotation.x=Math.sin(t*(k.ch.sp==='dog'?.03:.008)+k.ci)*(k.ch.sp==='dog'?.5:.25);v.tail.rotation.z=-.1+Math.sin(t*.006)*.08;}
   v.root.scale.setScalar(lerp(v.root.scale.x,k.small>0?.62:1,Math.min(1,dt*6)));
   for(const w of v.wheels){w.spin.rotation.z-=k.vel*dt/w.r;if(w.front)w.piv.rotation.y=-k.steer*.42;}
   const shOn=k.shield>0||k.rocket>0;v.shield.visible=shOn;if(shOn){v.shield.material.color.setHSL(k.rocket>0?.58:(t/1500+k.ci*.1)%1,.9,.6);v.shield.scale.setScalar(1+Math.sin(t/90)*.03);}
@@ -1085,7 +1155,7 @@ function refreshSel(model){
   $('stats').innerHTML=[['スピード','spd'],['加速','acc'],['ハンドリング','hnd'],['重さ','wgt']].map(([n,k])=>`<span>${n}</span><div class="bar"><i style="width:${s[k]*20}%"></i></div>`).join('');
   $('selName').textContent=CHARS[selChar].em+' '+CHARS[selChar].name;$('selSub').textContent=CLS[CHARS[selChar].cls].n+'　/　'+KTYPES[selKart].name+'：'+KTYPES[selKart].d;
   if(model)setPreview();netSelUI();}
-function renderSel(dt){turn.rotation.y+=dt*.6;renderer.render(gScene,gCam);}
+let selSpin=true;function renderSel(dt){if(selSpin)turn.rotation.y+=dt*.6;if(preview&&preview.head){const t=performance.now();preview.head.rotation.y=Math.sin(t*.0012)*.45;preview.head.rotation.z=Math.sin(t*.0024)*.08;preview.tail.rotation.x=Math.sin(t*.006)*.4;}renderer.render(gScene,gCam);}
 
 /* ---------------- 画面遷移 ---------------- */
 const show=(id,on)=>$(id).classList.toggle('hide',!on);
@@ -1277,7 +1347,7 @@ let last=performance.now();
 function loop(t){const dt=Math.min(.05,(t-last)/1000);last=t;if(window.__pause){requestAnimationFrame(loop);return;}
   if(state==='select'){if(!NORENDER)renderSel(dt);}else{update(dt);if(!NORENDER)render(dt,t);}netTick(dt);requestAnimationFrame(loop);}
 requestAnimationFrame(loop);
-window.__kart={get net(){return NET;},get karts(){return karts;},get state(){return state;},inp,get player(){return player;},step(sec){for(let i=0;i<sec*60;i++)update(1/60);},
+window.__kart={garage(ry,fov){selSpin=false;turn.rotation.y=ry;gCam.fov=fov;gCam.updateProjectionMatrix();},get net(){return NET;},get karts(){return karts;},get state(){return state;},inp,get player(){return player;},step(sec){for(let i=0;i<sec*60;i++)update(1/60);},
   give(it){player.item=it;player.itemN=ITEMS[it].cnt||1;player.roll=0;},use(){useItem(player);},get objs(){return [traps.length,balls.length,homing.length,bombs.length];},cam(){render(0.016,performance.now());},look(x,y,z,tx,ty,tz){window.__pause=1;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);sky.position.copy(camera.position);if(composer)composer.render();else renderer.render(scene,camera);},
   tp(i,lat=0){const k=player;i=wrapI(i);k.idx=i;k.x=PX[i]+NX[i]*lat;k.y=PY[i]+NY[i]*lat;k.z=H[i];k.a=angAt(i);k.vel=MAXV*.9;k.air=false;k.vz=0;camA=k.a;camPos.set(k.x-Math.cos(k.a)*30,k.z+13,k.y-Math.sin(k.a)*30);},get info(){return {N,TUN,JUMPS,PADS,maxH:Math.max(...H),bf:BF.reduce((a,b)=>a+(b>.5),0),lakes:lakes.map(l=>l.map(Math.round))};}};
 </script>
