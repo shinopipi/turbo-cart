@@ -86,17 +86,19 @@ h2{margin:0;font-size:min(7vh,6vw);font-style:italic;font-weight:900;text-shadow
 .opt.lock{opacity:.55;pointer-events:none}
 .btn:disabled{filter:grayscale(.8);opacity:.7}
 #toast{position:fixed;left:50%;top:calc(4vh + env(safe-area-inset-top));transform:translateX(-50%);background:rgba(10,18,40,.9);border:2px solid #ffd23c;padding:1.2vh 2.4vw;border-radius:1.6vh;font-weight:800;font-size:min(3vh,2.6vw);z-index:7;text-align:center}
+#vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,rgba(0,0,0,0) 58%,rgba(0,0,20,.32) 100%)}
 #load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#14213d;font-weight:800;font-size:4vh;z-index:8}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="vig"></div>
 
 <div id="title" class="ov dim hide">
   <h1>TURBO <span>KART</span> GP</h1>
   <div class="row"><button class="btn g" id="play">ひとりで あそぶ</button><button class="btn" id="online">🌐 オンライン対戦</button></div>
   <div class="help" id="help"></div>
-  <button class="btn y s" id="snd">🔊 サウンド ON</button>
+  <div class="row"><button class="btn y s" id="snd">🔊 サウンド ON</button><button class="btn s" id="qual"></button></div>
 </div>
 
 <div id="sel" class="hide">
@@ -156,8 +158,13 @@ h2{margin:0;font-size:min(7vh,6vw);font-style:italic;font-weight:900;text-shadow
 <div id="rot">📱 スマホを横向きにしてください</div>
 <div id="load">読み込み中…</div>
 
+<script type="importmap">{"imports":{"three":"./lib/three.module.min.js"}}</script>
 <script type="module">
-import * as THREE from './lib/three.module.min.js';
+import * as THREE from 'three';
+import {EffectComposer} from './lib/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from './lib/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from './lib/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from './lib/addons/postprocessing/OutputPass.js';
 /* ============================================================
    TURBO KART GP  —  three.js で描くオリジナルのカートレース
    ============================================================ */
@@ -170,7 +177,8 @@ const store={get(k,d){try{const v=localStorage.getItem('tkgp_'+k);return v==null
 /* ---------------- レンダラー ---------------- */
 const cv=$('c');
 const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio||1,TOUCH?1.75:2));
+const HQ=store.get('q','high')==='high';
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,HQ?2:1.3));
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const ANISO=Math.min(16,renderer.capabilities.getMaxAnisotropy());
@@ -190,9 +198,13 @@ const sky=new THREE.Mesh(new THREE.SphereGeometry(5000,32,16),gradientMat('#2c7c
 sky.frustumCulled=false;sky.renderOrder=-10;scene.add(sky);
 scene.add(new THREE.HemisphereLight('#d4ebff','#56703a',1.25));
 const sun=new THREE.DirectionalLight('#fff1d8',2.9);sun.castShadow=true;
-const SHR=TOUCH?130:180;sun.shadow.mapSize.set(TOUCH?1024:2048,TOUCH?1024:2048);
+const SHR=HQ?150:130,SHM=HQ?2048:1024;sun.shadow.mapSize.set(SHM,SHM);
 Object.assign(sun.shadow.camera,{left:-SHR,right:SHR,top:SHR,bottom:-SHR,near:10,far:1400});
 sun.shadow.bias=-0.0006;sun.shadow.normalBias=0.4;scene.add(sun,sun.target);
+// 高画質：MSAA＋ブルーム（光るものだけがにじむ）
+let composer=null,bloom=null;
+if(HQ){try{const rt=new THREE.WebGLRenderTarget(4,4,{type:THREE.HalfFloatType,samples:4});composer=new EffectComposer(renderer,rt);
+  composer.addPass(new RenderPass(scene,camera));bloom=new UnrealBloomPass(new THREE.Vector2(256,256),.55,.5,2.4);composer.addPass(bloom);composer.addPass(new OutputPass());}catch(e){composer=null;}}
 
 /* ---------------- テクスチャ ---------------- */
 function ctex(w,h,draw,o={}){const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');draw(x,w,h);
@@ -227,13 +239,16 @@ const MATS={
   stone:new THREE.MeshStandardMaterial({map:T.stone,roughness:.95,side:THREE.DoubleSide}),
   concrete:new THREE.MeshStandardMaterial({color:'#b9bcc2',roughness:.85}),
   check:new THREE.MeshStandardMaterial({map:T.check,roughness:.7,polygonOffset:true,polygonOffsetFactor:-2}),
-  pad:new THREE.MeshBasicMaterial({map:T.pad,polygonOffset:true,polygonOffsetFactor:-2,toneMapped:false}),
+  pad:new THREE.MeshBasicMaterial({map:T.pad,color:new THREE.Color(1,1,1).multiplyScalar(HQ?2.6:1),polygonOffset:true,polygonOffsetFactor:-2,toneMapped:false}),
   ramp:new THREE.MeshStandardMaterial({map:T.ramp,roughness:.5,polygonOffset:true,polygonOffsetFactor:-2,side:THREE.DoubleSide}),
-  lamp:new THREE.MeshBasicMaterial({color:'#fff1b8',toneMapped:false}),
+  lamp:new THREE.MeshBasicMaterial({color:new THREE.Color('#fff1b8').multiplyScalar(HQ?5:1),toneMapped:false}),
 };
 
+const lakes=[];let waterMat=null;
+function makeWater(){const t=new THREE.TextureLoader().load('./lib/textures/waternormals.jpg');t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=ANISO;
+  return new THREE.MeshStandardMaterial({color:'#2a6f9e',roughness:.06,metalness:.25,normalMap:t,normalScale:new THREE.Vector2(.45,.45),envMapIntensity:1.6});}
 /* ---------------- 形状ユーティリティ（なめらかな曲面） ---------------- */
-const MAT={paint:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.3,metalness:.1}),
+const MAT={paint:HQ?new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.38,metalness:.12,clearcoat:1,clearcoatRoughness:.06}):new THREE.MeshStandardMaterial({vertexColors:true,roughness:.3,metalness:.1}),
   matte:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85}),
   metal:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.3,metalness:.85}),
   glow:new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false})};
@@ -360,10 +375,30 @@ function buildCourse(id){
       const g=new THREE.ShapeGeometry(sh,24);const m=new THREE.Mesh(g,MATS.stone);m.position.set(PX[e],H[e],PY[e]);m.rotation.y=-angAt(e)-Math.PI/2;m.castShadow=m.receiveShadow=true;trackGrp.add(m);}
     const cnt=Math.floor(wrapI(b-a)/3),im=new THREE.InstancedMesh(new THREE.BoxGeometry(4,.6,10),MATS.lamp,cnt),mt=new THREE.Matrix4();
     for(let k=0;k<cnt;k++){const i=(a+k*3)%N;mt.makeRotationY(-angAt(i));mt.setPosition(PX[i],H[i]+TH-1,PY[i]);im.setMatrixAt(k,mt);}trackGrp.add(im);}
+  // 湖
+  lakes.length=0;
+  {let best=null;for(let gx=minX-700;gx<=maxX+700;gx+=60)for(let gy=minY-700;gy<=maxY+700;gy+=60){const[dd,bi]=nearestAll(gx,gy),room=dd-(WALL+WD+spread(bi)+40);
+      if(room>220&&(!best||dd<best[3]))best=[gx,gy,room,dd];}
+    if(best){const r=Math.min(best[2]-20,260);lakes.push([best[0],best[1],r]);
+      const sand=new THREE.Mesh(new THREE.CircleGeometry(r+18,96),new THREE.MeshStandardMaterial({color:'#d9c68f',roughness:1}));sand.material.__own=true;sand.geometry.rotateX(-Math.PI/2);sand.position.set(best[0],.15,best[1]);sand.receiveShadow=true;trackGrp.add(sand);
+      const wg=new THREE.CircleGeometry(r,96);wg.rotateX(-Math.PI/2);const w=new THREE.Mesh(wg,waterMat||(waterMat=makeWater()));w.position.set(best[0],.5,best[1]);w.receiveShadow=true;trackGrp.add(w);
+      w.material.normalMap.repeat.set(r/90,r/90);}}
+  const inLake=(x,y,m=0)=>lakes.some(l=>(x-l[0])**2+(y-l[1])**2<(l[2]+30+m)**2);
+  // 花と茂み（高画質）
+  if(HQ){const fl=[],bu=[];
+    for(let i=0;i<N;i+=2){for(const s of[-1,1]){if(Math.random()<.35){const l=s*rnd(ROAD+CURB+6,WALL-6),cx=PX[i]+NX[i]*l,cy=PY[i]+NY[i]*l,hue=[.0,.13,.85,.6,.08][Math.floor(Math.random()*5)];
+        for(let q=0;q<5;q++)fl.push([cx+rnd(-5,5),H[i]+.6,cy+rnd(-5,5),hue]);}
+      if(i%3===0&&BF[i]<.1&&H[i]<2&&Math.random()<.55){const l=s*(WALL+WD+rnd(6,22));bu.push([PX[i]+NX[i]*l,0,PY[i]+NY[i]*l,rnd(.7,1.3)]);}}}
+    const fm=new THREE.MeshStandardMaterial({roughness:.6});fm.__own=true;const fi=new THREE.InstancedMesh(new THREE.SphereGeometry(.7,10,8),fm,fl.length),m=new THREE.Matrix4(),c=new THREE.Color();
+    fl.forEach((f,i)=>{m.makeScale(1,.7,1);m.setPosition(f[0],f[1],f[2]);fi.setMatrixAt(i,m);c.setHSL(f[3],.95,f[3]===.6?.92:.58);fi.setColorAt(i,c);});trackGrp.add(fi);
+    const BL=[];[[0,4,0,5],[4,3,2,3.8],[-4,3,-1.5,4],[1,6.5,-1,3.2]].forEach(([x,y,z,r])=>part(BL,sph(r,18,12),'#ffffff','matte',x,y,z));
+    const bm=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85});bm.__own=true;const bi2=new THREE.InstancedMesh(mergeList(BL),bm,bu.length),q=new THREE.Quaternion(),sv=new THREE.Vector3(),pv=new THREE.Vector3(),up=new THREE.Vector3(0,1,0);
+    bu.forEach((b,i)=>{q.setFromAxisAngle(up,Math.random()*TAU);sv.setScalar(b[3]);pv.set(b[0],0,b[2]);m.compose(pv,q,sv);bi2.setMatrixAt(i,m);c.setHSL(.29+rnd(-.04,.04),.55,.32+rnd(-.05,.06));bi2.setColorAt(i,c);});
+    bi2.castShadow=bi2.receiveShadow=true;trackGrp.add(bi2);}
   // 木（なめらかな丸い木と針葉樹）
   {const pts=[];let tries=0;
     while(pts.length<280&&tries++<15000){const x=rnd(minX-600,maxX+600),y=rnd(minY-600,maxY+600),[dd,bi]=nearestAll(x,y);
-      if(dd<WALL+WD+spread(bi)+26||dd>750)continue;
+      if(dd<WALL+WD+spread(bi)+26||dd>750||inLake(x,y))continue;
       if(TUN){let near=false;for(let k=TUN[0];k!==TUN[1];k=(k+1)%N){if(k%4)continue;if((PX[k]-x)**2+(PY[k]-y)**2<(WALL+200)**2){near=true;break;}}if(near)continue;}
       pts.push([x,y,rnd(.8,1.3),Math.random()]);}
     const roundL=[],pineL=[];
@@ -473,15 +508,15 @@ function buildKart(ci,kt){
 function disposeKart(v){v.root.traverse(o=>{if(o.isMesh&&o!==v.shield)o.geometry.dispose();});v.shield.material.dispose();v.root.removeFromParent();}
 
 /* ---------------- パーティクル ---------------- */
-class Pool{constructor(n,size,blend,opacity){this.n=n;this.i=0;this.p=new Float32Array(n*3);this.c=new Float32Array(n*3);this.v=new Float32Array(n*3);this.l=new Float32Array(n);this.f=new Float32Array(n);
+class Pool{constructor(n,size,blend,opacity,glow=1){this.glow=glow;this.n=n;this.i=0;this.p=new Float32Array(n*3);this.c=new Float32Array(n*3);this.v=new Float32Array(n*3);this.l=new Float32Array(n);this.f=new Float32Array(n);
   for(let i=0;i<n;i++)this.p[i*3+1]=-9999;const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(this.p,3));g.setAttribute('color',new THREE.BufferAttribute(this.c,3));
   this.g=g;this.m=new THREE.Points(g,new THREE.PointsMaterial({size,map:T.soft,vertexColors:true,transparent:true,opacity,depthWrite:false,blending:blend,sizeAttenuation:true}));this.m.frustumCulled=false;scene.add(this.m);}
-  add(x,y,z,vx,vy,vz,life,col,floor=-1e9){const i=this.i;this.i=(i+1)%this.n;const j=i*3;this.p[j]=x;this.p[j+1]=y;this.p[j+2]=z;this.v[j]=vx;this.v[j+1]=vy;this.v[j+2]=vz;this.l[i]=life;this.f[i]=floor;this.c[j]=col.r;this.c[j+1]=col.g;this.c[j+2]=col.b;}
+  add(x,y,z,vx,vy,vz,life,col,floor=-1e9){const i=this.i;this.i=(i+1)%this.n;const j=i*3;this.p[j]=x;this.p[j+1]=y;this.p[j+2]=z;this.v[j]=vx;this.v[j+1]=vy;this.v[j+2]=vz;this.l[i]=life;this.f[i]=floor;const g=this.glow;this.c[j]=col.r*g;this.c[j+1]=col.g*g;this.c[j+2]=col.b*g;}
   update(dt,grav){const p=this.p,v=this.v;for(let i=0;i<this.n;i++){if(this.l[i]<=0)continue;this.l[i]-=dt;const j=i*3;if(this.l[i]<=0){p[j+1]=-9999;continue;}
     p[j]+=v[j]*dt;p[j+1]+=v[j+1]*dt;p[j+2]+=v[j+2]*dt;v[j+1]-=grav*dt;if(p[j+1]<this.f[i]){p[j+1]=this.f[i];v[j+1]=0;}}
     this.g.attributes.position.needsUpdate=true;this.g.attributes.color.needsUpdate=true;}
   clear(){this.l.fill(0);for(let i=0;i<this.n;i++)this.p[i*3+1]=-9999;}}
-const spark=new Pool(900,2.6,THREE.AdditiveBlending,1),smoke=new Pool(320,9,THREE.NormalBlending,.45);
+const spark=new Pool(900,HQ?1.9:2.6,THREE.AdditiveBlending,1,HQ?2.4:1),smoke=new Pool(320,9,THREE.NormalBlending,.45);
 const COL={w:new THREE.Color('#ffffff'),b:new THREE.Color('#4fc3ff'),o:new THREE.Color('#ff9a2e'),y:new THREE.Color('#ffd23c'),r:new THREE.Color('#ff5a1e'),dust:new THREE.Color('#c8b484'),gray:new THREE.Color('#d0d0d0'),gold:new THREE.Color('#ffcc33')};
 function burst(x,y,z,n,sp,cols,life=.5){for(let i=0;i<n;i++)spark.add(x,y,z,rnd(-sp,sp),rnd(sp*.2,sp),rnd(-sp,sp),life,cols[i%cols.length]);}
 
@@ -505,7 +540,7 @@ const TABLE=[
 ];
 function pickItem(rank){const t=TABLE[clamp(rank,1,8)-1];let tot=0;for(const k in t)tot+=t[k];let r=Math.random()*tot;for(const k in t){if((r-=t[k])<0)return k;}return 'turbo';}
 
-const boxMat=new THREE.MeshStandardMaterial({map:T.star,emissiveMap:T.star,emissive:new THREE.Color('#ffffff'),emissiveIntensity:.6,transparent:true,opacity:.92,roughness:.15,metalness:.2});
+const boxMat=new THREE.MeshStandardMaterial({map:T.star,emissiveMap:T.star,emissive:new THREE.Color('#ffffff'),emissiveIntensity:HQ?2.2:.6,transparent:true,opacity:.92,roughness:.15,metalness:.2});
 const fakeMat=new THREE.MeshStandardMaterial({map:T.star,emissiveMap:T.star,emissive:new THREE.Color('#ff3030'),emissiveIntensity:.5,color:'#ff9090',transparent:true,opacity:.9,roughness:.15,metalness:.2});
 const boxGeo=(()=>{const L=[];part(L,rbox(7,7,7,1.2),'#ffffff','paint',0,0,0);const g=mergeList(L);g.deleteAttribute('color');
   const p=g.attributes.position,nrm=g.attributes.normal,uv=new Float32Array(p.count*2);for(let i=0;i<p.count;i++){const ax=Math.abs(nrm.getX(i)),ay=Math.abs(nrm.getY(i)),az=Math.abs(nrm.getZ(i));let u,v;
@@ -542,7 +577,7 @@ function resetRace(demo,roster){
     k.skill=0.885+0.011*(7-slot)+CLASSES[cc].ai+rnd(-.008,.008);karts.push(k);});
   player=roster?karts.find(k=>k.h===NET.role):karts[7];player.auto=!!demo;if(!demo)player.skill=1;
   for(const k of karts){if(k.h&&k!==player)k.auto=false;k.remote=online()&&!auth(k);k.buf=null;}
-  for(const b of boxes)b.t=0;
+  for(const b of boxes)b.t=0;clearSkids();
   camA=player.a;camPos.set(player.x-Math.cos(player.a)*30,player.z+13,player.y-Math.sin(player.a)*30);
 }
 
@@ -676,7 +711,15 @@ function updKart(k,dt){
   if(!k.fin&&k.lap>LAPS){k.fin=true;k.finT=raceT;}
   kartFX(k);
 }
+// タイヤ跡
+const SKN=HQ?1400:600,skidGeo=new THREE.PlaneGeometry(2.2,4.4);skidGeo.rotateX(-Math.PI/2);
+const skid=new THREE.InstancedMesh(skidGeo,new THREE.MeshBasicMaterial({color:'#15161a',transparent:true,opacity:.3,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}),SKN);
+skid.frustumCulled=false;skid.renderOrder=1;scene.add(skid);let skidI=0;const _sm=new THREE.Matrix4(),_zero=new THREE.Matrix4().makeScale(0,0,0);
+function clearSkids(){for(let i=0;i<SKN;i++)skid.setMatrixAt(i,_zero);skid.instanceMatrix.needsUpdate=true;}clearSkids();
+function addSkid(x,y,z,a){_sm.makeRotationY(Math.PI/2-a);_sm.setPosition(x,z+.2,y);skid.setMatrixAt(skidI,_sm);skidI=(skidI+1)%SKN;skid.instanceMatrix.needsUpdate=true;}
 function kartFX(k){const off=Math.abs(k.lat)>ROAD+CURB&&!k.air;
+  if(!k.air&&(k.drift||k.spin>0)&&Math.abs(k.vel)>30&&Math.abs(k.lat)<ROAD+CURB){const d=Math.hypot(k.x-(k.skx||0),k.y-(k.sky||0));
+    if(d>3.2){k.skx=k.x;k.sky=k.y;const ang=k.a+k.drift*.4,ca2=Math.cos(ang),sa2=Math.sin(ang);for(const s of[-1,1])addSkid(k.x-ca2*4.6-sa2*s*4.8,k.y-sa2*4.6+ca2*s*4.8,k.z,ang);}}
   const ca=Math.cos(k.a),sa=Math.sin(k.a),rx=-sa,ry=ca,zb=k.z;
   if(k.drift&&Math.random()<.85){const col=k.driftT>1.7?COL.o:k.driftT>.75?COL.b:COL.w,bx=k.x-ca*5,by=k.y-sa*5;
     for(const s of[-1,1])spark.add(bx+rx*s*5,zb+.6,by+ry*s*5,rnd(-12,12)-ca*20,rnd(6,18),rnd(-12,12)-sa*20,.3,col,zb+.3);
@@ -770,7 +813,8 @@ function render(dt,t){
   const tf=(p.boost>0||p.rocket>0)?76:62;fov+=(tf-fov)*Math.min(1,dt*4);camera.fov=fov;camera.updateProjectionMatrix();
   sky.position.copy(camera.position);
   tmpV.set(p.x+Math.cos(p.a)*50,p.z,p.y+Math.sin(p.a)*50);sun.target.position.copy(tmpV);sun.position.copy(tmpV).addScaledVector(SUNDIR,700);
-  renderer.render(scene,camera);
+  if(composer)composer.render();else renderer.render(scene,camera);
+  if(waterMat)waterMat.normalMap.offset.set(t/60000,t/45000);
   if(state==='count'||state==='race'||state==='done')drawHUD(t);
   $('ink').style.opacity=(!p.auto&&p.ink>0&&state==='race')?Math.min(1,p.ink):0;
   $('flash').style.opacity=flashT>0?Math.min(.8,flashT*2):0;
@@ -866,6 +910,8 @@ $('nJoin').onclick=()=>{const c=$('nCode').value.trim().toUpperCase();if(!/^[A-Z
 $('nCode').addEventListener('keydown',e=>{if(e.key==='Enter')$('nJoin').click();});
 $('back').onclick=toTitle;$('go').onclick=goPressed;$('again').onclick=()=>{if(NET)hostStart();else startRace();};$('toSel').onclick=toSelect;$('toTitle').onclick=toTitle;$('quit').onclick=toTitle;
 const sndLabel=()=>$('snd').textContent=sndOn?'🔊 サウンド ON':'🔇 サウンド OFF';sndLabel();
+const qLabel=()=>$('qual').textContent=HQ?'✨ 画質：高':'⚡ 画質：標準（軽い）';qLabel();
+$('qual').onclick=()=>{store.set('q',HQ?'std':'high');location.reload();};
 $('snd').onclick=()=>{sndOn=!sndOn;store.set('snd',sndOn);sndLabel();};
 $('help').innerHTML=TOUCH
   ?'アクセルは自動 ／ ◀ ▶ でハンドル ／ <b>ドリフト</b>を押しながら曲がり、離すとミニターボ ／ ジャンプ中に<b>ドリフト</b>でトリック<br>★ボックスで13種類のアイテム → <b>アイテム</b>で使用（ブレーキを押しながらで後ろへ投げる）'
@@ -1013,17 +1059,18 @@ function netFollow(k){const B=k.buf;if(!B||!B.length)return;const rt=performance
 
 /* ---------------- リサイズ・ループ ---------------- */
 function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+  if(composer){composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);}
   gCam.aspect=w/h;gCam.setViewOffset(w,h,-w*.2,0,w,h);gCam.updateProjectionMatrix();}
 addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,250));resize();
 buildCourse(selCourse);resetRace(true);toTitle();$('load').style.display='none';
 const NORENDER=/norender/.test(location.search);// テスト用
 let last=performance.now();
-function loop(t){const dt=Math.min(.05,(t-last)/1000);last=t;
+function loop(t){const dt=Math.min(.05,(t-last)/1000);last=t;if(window.__pause){requestAnimationFrame(loop);return;}
   if(state==='select'){if(!NORENDER)renderSel(dt);}else{update(dt);if(!NORENDER)render(dt,t);}netTick(dt);requestAnimationFrame(loop);}
 requestAnimationFrame(loop);
 window.__kart={get net(){return NET;},get karts(){return karts;},get state(){return state;},inp,get player(){return player;},step(sec){for(let i=0;i<sec*60;i++)update(1/60);},
-  give(it){player.item=it;player.itemN=ITEMS[it].cnt||1;player.roll=0;},use(){useItem(player);},get objs(){return [traps.length,balls.length,homing.length,bombs.length];},cam(){render(0.016,performance.now());},
-  tp(i,lat=0){const k=player;i=wrapI(i);k.idx=i;k.x=PX[i]+NX[i]*lat;k.y=PY[i]+NY[i]*lat;k.z=H[i];k.a=angAt(i);k.vel=MAXV*.9;k.air=false;k.vz=0;camA=k.a;camPos.set(k.x-Math.cos(k.a)*30,k.z+13,k.y-Math.sin(k.a)*30);},get info(){return {N,TUN,JUMPS,PADS,maxH:Math.max(...H),bf:BF.reduce((a,b)=>a+(b>.5),0)};}};
+  give(it){player.item=it;player.itemN=ITEMS[it].cnt||1;player.roll=0;},use(){useItem(player);},get objs(){return [traps.length,balls.length,homing.length,bombs.length];},cam(){render(0.016,performance.now());},look(x,y,z,tx,ty,tz){window.__pause=1;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);sky.position.copy(camera.position);if(composer)composer.render();else renderer.render(scene,camera);},
+  tp(i,lat=0){const k=player;i=wrapI(i);k.idx=i;k.x=PX[i]+NX[i]*lat;k.y=PY[i]+NY[i]*lat;k.z=H[i];k.a=angAt(i);k.vel=MAXV*.9;k.air=false;k.vz=0;camA=k.a;camPos.set(k.x-Math.cos(k.a)*30,k.z+13,k.y-Math.sin(k.a)*30);},get info(){return {N,TUN,JUMPS,PADS,maxH:Math.max(...H),bf:BF.reduce((a,b)=>a+(b>.5),0),lakes:lakes.map(l=>l.map(Math.round))};}};
 </script>
 </body>
 </html>
