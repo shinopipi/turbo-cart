@@ -99,7 +99,7 @@ h2{margin:0;font-size:min(7vh,6vw);font-style:italic;font-weight:900;text-shadow
   <h1>TURBO <span>KART</span> GP</h1>
   <div class="row"><button class="btn g" id="play">ひとりで あそぶ</button><button class="btn" id="online">🌐 オンライン対戦</button></div>
   <div class="help" id="help"></div>
-  <div class="row"><button class="btn y s" id="snd">🔊 サウンド ON</button><button class="btn s" id="qual"></button></div>
+  <div class="row"><button class="btn y s" id="snd">🔊 サウンド ON</button><button class="btn s" id="qual"></button><button class="btn s" id="fpsB" style="background:#555;box-shadow:0 .5vh 0 #333"></button></div>
 </div>
 
 <div id="sel" class="hide">
@@ -183,7 +183,8 @@ const store={get(k,d){try{const v=localStorage.getItem('tkgp_'+k);return v==null
 const cv=$('c');
 const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
 const QUAL=['ultra','high','std'].includes(store.get('q','high'))?store.get('q','high'):'high',HQ=QUAL!=='std',ULTRA=QUAL==='ultra';
-renderer.setPixelRatio(Math.min(devicePixelRatio||1,HQ?2:1.3));
+const PR_MAX=Math.min(devicePixelRatio||1,HQ?2:1.3),PR_MIN=Math.min(PR_MAX,TOUCH?.85:1);let prCur=PR_MAX;
+renderer.setPixelRatio(prCur);
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const ANISO=Math.min(16,renderer.capabilities.getMaxAnisotropy());
@@ -205,13 +206,13 @@ scene.add(new THREE.HemisphereLight('#d4ebff','#56703a',1.25));
 const sun=new THREE.DirectionalLight('#fff1d8',2.9);sun.castShadow=true;
 const SHR=HQ?150:130,SHM=HQ?2048:1024;sun.shadow.mapSize.set(SHM,SHM);
 Object.assign(sun.shadow.camera,{left:-SHR,right:SHR,top:SHR,bottom:-SHR,near:10,far:1400});
-sun.shadow.bias=-0.0006;sun.shadow.normalBias=0.4;scene.add(sun,sun.target);
+sun.shadow.autoUpdate=false;sun.shadow.bias=-0.0006;sun.shadow.normalBias=0.4;scene.add(sun,sun.target);
 // 高画質：MSAA＋ブルーム（光るものだけがにじむ）
 let composer=null,bloom=null,gtao=null,grade=null;
-if(HQ){try{const rt=new THREE.WebGLRenderTarget(4,4,{type:THREE.HalfFloatType,samples:4});composer=new EffectComposer(renderer,rt);
+if(HQ){try{const rt=new THREE.WebGLRenderTarget(4,4,{type:THREE.HalfFloatType,samples:TOUCH?2:4});composer=new EffectComposer(renderer,rt);
   composer.addPass(new RenderPass(scene,camera));
   if(ULTRA&&!/noao/.test(location.search)){gtao=new GTAOPass(scene,camera,innerWidth,innerHeight);gtao.updateGtaoMaterial({radius:3.2,distanceExponent:1.6,thickness:2.5,scale:1.25,samples:12,distanceFallOff:1,screenSpaceRadius:false});
-    gtao.updatePdMaterial({lumaPhi:10,depthPhi:2,normalPhi:3,radius:5,radiusExponent:1,rings:2,samples:12});gtao.blendIntensity=1;const ov=gtao.overrideVisibility.bind(gtao);gtao.overrideVisibility=function(){ov();this.scene.traverse(o=>{if((o.isSprite||o===sky)&&o.visible){this._visibilityCache.set(o,true);o.visible=false;}});};composer.addPass(gtao);}
+    gtao.updatePdMaterial({lumaPhi:10,depthPhi:2,normalPhi:3,radius:5,radiusExponent:1,rings:2,samples:12});gtao.blendIntensity=1;{const ss=gtao.setSize.bind(gtao);gtao.setSize=(w,h)=>ss(Math.max(1,w>>1),Math.max(1,h>>1));}const ov=gtao.overrideVisibility.bind(gtao);gtao.overrideVisibility=function(){ov();this.scene.traverse(o=>{if((o.isSprite||o===sky)&&o.visible){this._visibilityCache.set(o,true);o.visible=false;}});};composer.addPass(gtao);}
   bloom=new UnrealBloomPass(new THREE.Vector2(256,256),.55,.5,2.4);composer.addPass(bloom);composer.addPass(new OutputPass());
   grade=new ShaderPass({uniforms:{tDiffuse:{value:null},sat:{value:1.1},con:{value:1.05},warm:{value:.025}},vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
     fragmentShader:'uniform sampler2D tDiffuse;uniform float sat,con,warm;varying vec2 vUv;void main(){vec4 c=texture2D(tDiffuse,vUv);vec3 col=c.rgb;float l=dot(col,vec3(.2126,.7152,.0722));col=mix(vec3(l),col,sat);col=(col-.5)*con+.5;col+=vec3(warm,warm*.35,-warm*.8)*(l-.35);gl_FragColor=vec4(clamp(col,0.,1.),1.);}'});composer.addPass(grade);}catch(e){composer=null;}}
@@ -401,6 +402,7 @@ function treeGeo(kind){return gget('tree_'+kind,()=>{const L=[];
 function bladeGeo(){return gget('blade',()=>{const pos=[],col=[],idx=[],nor=[],seg=3;for(let i=0;i<=seg;i++){const t=i/seg,w=.32*(1-t*.92),c=.42+.7*t;pos.push(-w,t,0,w,t,0);col.push(c,c,c,c,c,c);nor.push(0,1,.25,0,1,.25);}
   for(let i=0;i<seg;i++){const a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2);}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
   g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setIndex(idx);g.__keep=true;return g;});}
+const grassChunks=[];
 const grassMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85,side:THREE.DoubleSide});
 grassMat.onBeforeCompile=sh=>{sh.uniforms.uTime={value:0};grassMat.userData.sh=sh;sh.vertexShader='uniform float uTime;\n'+sh.vertexShader.replace('#include <begin_vertex>',
   '#include <begin_vertex>\nvec4 gw=instanceMatrix*vec4(0.,0.,0.,1.);float sw=sin(uTime*1.7+gw.x*.045+gw.z*.06)*.3+sin(uTime*3.1+gw.x*.15)*.08;transformed.x+=sw*position.y*position.y;transformed.z+=sw*position.y*position.y*.5;');};
@@ -559,6 +561,7 @@ function buildCourse(id){
     const bi2=new THREE.InstancedMesh(mergeList(BL),own(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85})),bu.length),q=new THREE.Quaternion(),sv=new THREE.Vector3(),pv=new THREE.Vector3(),up=new THREE.Vector3(0,1,0);
     bu.forEach((b,i)=>{q.setFromAxisAngle(up,Math.random()*TAU);sv.setScalar(b[3]);pv.set(b[0],0,b[2]);m.compose(pv,q,sv);bi2.setMatrixAt(i,m);c.setHSL(.29+rnd(-.04,.04),.55,.32+rnd(-.05,.06));bi2.setColorAt(i,c);});
     bi2.castShadow=bi2.receiveShadow=true;trackGrp.add(bi2);}
+  grassChunks.length=0;
   // 3Dの草（高画質以上）
   if(HQ&&th.grass){const nIn=ULTRA?30:12,nOut=ULTRA?22:6,CH=40,m=new THREE.Matrix4(),q=new THREE.Quaternion(),sv=new THREE.Vector3(),pv=new THREE.Vector3(),up=new THREE.Vector3(0,1,0),c=new THREE.Color();
     for(let c0=0;c0<N;c0+=CH){const list=[];for(let i=c0;i<Math.min(N,c0+CH);i++)for(const s2 of[-1,1]){
@@ -566,7 +569,7 @@ function buildCourse(id){
         if(BF[i]<.1&&H[i]<1.5&&!th.floating)for(let k=0;k<nOut;k++){const l=s2*rnd(WALL+WD+2,WALL+WD+42),a=rnd(-.5,.5)*STEP,x=PX[i]+NX[i]*l+TX[i]*a,y=PY[i]+NY[i]*l+TY[i]*a;if(!inLake(x,y))list.push([x,0,y]);}}
       if(!list.length)continue;const im=new THREE.InstancedMesh(bladeGeo(),grassMat,list.length);
       list.forEach((p,i)=>{q.setFromAxisAngle(up,Math.random()*TAU);const hh=rnd(2.2,4.6);sv.set(rnd(.8,1.4),hh,1);pv.set(p[0],p[1],p[2]);m.compose(pv,q,sv);im.setMatrixAt(i,m);c.setHSL(th.grass+rnd(-.03,.03),.55,.42+rnd(-.08,.1));im.setColorAt(i,c);});
-      im.computeBoundingSphere();im.receiveShadow=true;trackGrp.add(im);}}
+      im.computeBoundingSphere();im.receiveShadow=true;trackGrp.add(im);const bs=im.boundingSphere;grassChunks.push({m:im,cx:bs.center.x,cz:bs.center.z,r:bs.radius});}}
   // 木
   if(th.n){const pts=[];let tries=0;const n=HQ?th.n:Math.round(th.n*.6);
     while(pts.length<n&&tries++<16000){const x=rnd(minX-650,maxX+650),y=rnd(minY-650,maxY+650),[dd,bi]=nearestAll(x,y);
@@ -1143,6 +1146,7 @@ function render(dt,t){
   const tf=(p.boost>0||p.rocket>0)?76:62;fov+=(tf-fov)*Math.min(1,dt*4);camera.fov=fov;camera.updateProjectionMatrix();
   sky.position.copy(camera.position);
   tmpV.set(p.x+Math.cos(p.a)*50,p.z,p.y+Math.sin(p.a)*50);sun.target.position.copy(tmpV);sun.position.copy(tmpV).addScaledVector(SUNDIR,700);
+  perfFrame(dt);
   if(composer)composer.render();else renderer.render(scene,camera);
   if(waterMat)waterMat.normalMap.offset.set(t/60000,t/45000);if(grassMat.userData.sh)grassMat.userData.sh.uniforms.uTime.value=t/1000;
   updWeather(dt,t);
@@ -1151,6 +1155,23 @@ function render(dt,t){
   $('flash').style.opacity=flashT>0?Math.min(.8,flashT*2):0;
 }
 
+/* ---------------- 軽量化（自動で解像度を調整・遠くを省略） ---------------- */
+let frameN=0,ftAcc=0,ftN=0,ftLast=0,prCool=0,fpsShow=/fps/.test(location.search)||store.get('fps',false),fpsEl=null;
+function setPR(v){v=clamp(+v.toFixed(2),PR_MIN,PR_MAX);if(Math.abs(v-prCur)<.04)return;prCur=v;renderer.setPixelRatio(v);resize();}
+function perfFrame(dt){frameN++;
+  // 影は1フレームおき（動きの少ない遠景が多いので見た目はほぼ同じ）
+  sun.shadow.needsUpdate=(frameN&1)===0||!HQ;
+  // 遠くの草とカートの影を省く
+  const cx=camera.position.x,cz=camera.position.z,gd=ULTRA?420:300;
+  for(const g of grassChunks){const dx=g.cx-cx,dz=g.cz-cz;g.m.visible=dx*dx+dz*dz<(gd+g.r)**2;}
+  for(const k of karts){const dx=k.x-cx,dz=k.y-cz,near=dx*dx+dz*dz<260*260;if(k.v.near!==near){k.v.near=near;k.v.root.traverse(o=>{if(o.isMesh&&o!==k.v.shield)o.castShadow=near;});}}
+  // 1秒ごとにフレーム時間を見て解像度を自動調整
+  const now=performance.now();if(ftLast){ftAcc+=now-ftLast;ftN++;}ftLast=now;
+  if(ftAcc>1000){const ms=ftAcc/ftN,fps=1000/ms;ftAcc=0;ftN=0;
+    if(fpsShow){if(!fpsEl){fpsEl=document.createElement('div');fpsEl.style.cssText='position:fixed;left:50%;bottom:1vh;transform:translateX(-50%);font:700 12px system-ui;color:#fff;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:6px;z-index:9;pointer-events:none';document.body.appendChild(fpsEl);}
+      fpsEl.textContent=`${fps.toFixed(0)} fps / 解像度 ${(prCur/PR_MAX*100).toFixed(0)}%`;}
+    if(prCool>0)prCool--;else if(state==='race'||state==='count'||state==='done'){
+      if(fps<50){setPR(prCur*(fps<35?.82:.9));prCool=1;}else if(fps>58&&prCur<PR_MAX){setPR(prCur*1.08);prCool=2;}}}}
 /* ---------------- HUD ---------------- */
 const mini=$('mini'),mg=mini.getContext('2d'),mmImg=document.createElement('canvas');mmImg.width=mmImg.height=240;let mmS=1;
 const mmX=x=>120+(x-CX)*mmS,mmY=y=>120+(y-CY)*mmS;
@@ -1221,7 +1242,7 @@ function toSelect(){state='select';show('title',0);show('res',0);show('hud',0);s
 function startRace(cfg){const co=cfg?cfg.co:selCourse,cl=cfg?cfg.cc:cc;MAXV=CLASSES[cl].v;initAudio();if(AC&&AC.state==='suspended')AC.resume();
   if(courseId!==co)$('load').style.display='flex';
   setTimeout(()=>{buildCourse(co);$('load').style.display='none';
-    resetRace(false,cfg&&cfg.roster);state='count';countT=3.8;bgmRate=1;bgmForState();bannerT=0;$('banner').style.opacity=0;$('count').textContent='';for(const k in hudC)delete hudC[k];
+    ftLast=0;ftAcc=0;ftN=0;prCool=2;resetRace(false,cfg&&cfg.roster);state='count';countT=3.8;bgmRate=1;bgmForState();bannerT=0;$('banner').style.opacity=0;$('count').textContent='';for(const k in hudC)delete hudC[k];
     show('sel',0);show('res',0);show('title',0);show('net',0);show('hud',1);show('quit',1);show('touch',TOUCH);},30);}
 function fillResult(){const ord=karts.slice().sort((a,b)=>a.rank-b.rank);
   $('resL').innerHTML=ord.map(k=>`<li class="${k===player?'me':''}"><span>${k.rank}位　${k.ch.em} ${k.name}${k===player?'（あなた）':k.h?'（あいて）':''}</span><span>${k.fin?fmt(k.finT):'--:--'}</span></li>`).join('');}
@@ -1245,6 +1266,7 @@ $('nCode').addEventListener('keydown',e=>{if(e.key==='Enter')$('nJoin').click();
 $('back').onclick=toTitle;$('go').onclick=goPressed;$('again').onclick=()=>{if(NET)hostStart();else startRace();};$('toSel').onclick=toSelect;$('toTitle').onclick=toTitle;$('quit').onclick=toTitle;
 const sndLabel=()=>$('snd').textContent=['🔇 サウンド OFF','🔉 効果音のみ','🔊 BGM＋効果音'][sndMode];sndLabel();
 const qLabel=()=>$('qual').textContent={ultra:'🌟 画質：ウルトラ',high:'✨ 画質：高',std:'⚡ 画質：標準（軽い）'}[QUAL];qLabel();
+const fpsLabel=()=>$('fpsB').textContent=fpsShow?'FPS表示 ON':'FPS表示 OFF';fpsLabel();$('fpsB').onclick=()=>{fpsShow=!fpsShow;store.set('fps',fpsShow);fpsLabel();if(!fpsShow&&fpsEl){fpsEl.remove();fpsEl=null;}};
 $('qual').onclick=()=>{store.set('q',{std:'high',high:'ultra',ultra:'std'}[QUAL]);location.reload();};
 $('snd').onclick=()=>{sndMode=(sndMode+2)%3;sndOn=sndMode>0;store.set('snd2',sndMode);sndLabel();if(sndOn)initAudio();bgmForState();};
 $('help').innerHTML=TOUCH
@@ -1402,7 +1424,7 @@ let last=performance.now();
 function loop(t){const dt=Math.min(.05,(t-last)/1000);last=t;if(window.__pause){requestAnimationFrame(loop);return;}
   if(state==='select'){if(!NORENDER)renderSel(dt);}else{update(dt);if(!NORENDER)render(dt,t);}netTick(dt);requestAnimationFrame(loop);}
 requestAnimationFrame(loop);
-window.__kart={garage(ry,fov){selSpin=false;turn.rotation.y=ry;gCam.fov=fov;gCam.updateProjectionMatrix();},get net(){return NET;},get karts(){return karts;},get state(){return state;},inp,get player(){return player;},step(sec){for(let i=0;i<sec*60;i++)update(1/60);},
+window.__kart={get perf(){return {pr:prCur,max:PR_MAX,calls:renderer.info.render.calls,tris:renderer.info.render.triangles,grassOn:grassChunks.filter(g=>g.m.visible).length+'/'+grassChunks.length};},garage(ry,fov){selSpin=false;turn.rotation.y=ry;gCam.fov=fov;gCam.updateProjectionMatrix();},get net(){return NET;},get karts(){return karts;},get state(){return state;},inp,get player(){return player;},step(sec){for(let i=0;i<sec*60;i++)update(1/60);},
   give(it){player.item=it;player.itemN=ITEMS[it].cnt||1;player.roll=0;},use(){useItem(player);},get objs(){return [traps.length,balls.length,homing.length,bombs.length];},cam(){render(0.016,performance.now());},look(x,y,z,tx,ty,tz){window.__pause=1;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);sky.position.copy(camera.position);if(composer)composer.render();else renderer.render(scene,camera);},
   tp(i,lat=0){const k=player;i=wrapI(i);k.idx=i;k.x=PX[i]+NX[i]*lat;k.y=PY[i]+NY[i]*lat;k.z=H[i];k.a=angAt(i);k.vel=MAXV*.9;k.air=false;k.vz=0;camA=k.a;camPos.set(k.x-Math.cos(k.a)*30,k.z+13,k.y-Math.sin(k.a)*30);},get info(){return {N,TUN,JUMPS,PADS,maxH:Math.max(...H),bf:BF.reduce((a,b)=>a+(b>.5),0),lakes:lakes.map(l=>l.map(Math.round))};}};
 </script>
